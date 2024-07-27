@@ -2,13 +2,16 @@
 mod tests {
     use bs58;
     use solana_client::rpc_client::RpcClient;
-    use solana_program::{pubkey::Pubkey, system_instruction::transfer};
+    use solana_program::{message::Message, pubkey::Pubkey, system_instruction::transfer};
     use solana_sdk::{
         signature::{read_keypair_file, Keypair, Signer},
         transaction::Transaction,
     };
     use std::io::{self, BufRead};
     use std::str::FromStr;
+
+    const RPC_URL: &str = "https://api.devnet.solana.com";
+
     #[test]
     fn keygen() {
         // Create a new keypair
@@ -23,7 +26,6 @@ mod tests {
     }
     #[test]
     fn airdop() {
-        const RPC_URL: &str = "https://api.devnet.solana.com";
         // Import our keypair
         let keypair = read_keypair_file("dev-wallet.json").expect("Couldn't find wallet file");
 
@@ -38,14 +40,13 @@ mod tests {
                     "https://explorer.solana.com/tx/{}?cluster=devnet",
                     s.to_string()
                 );
-                // https://explorer.solana.com/tx/iF8ugwXJzNEooHQtbqSvGE6B9rGt77DWfhkKWSraxUFtEc8BVsZe6av1pvHpdEbuAASB4HDwxm1BnxgU1PSdv66?cluster=devnet
+                // https://explorer.solana.com/tx/5fbaRRSax4ig7KjdDfB1wSANTyVCH2u1oz7FhHn47pXrtPGngFugiCv4eHWAeAx34JR7eqeP857GKNLCF4k8x644?cluster=devnet
             }
             Err(e) => println!("Oops, something went wrong: {}", e.to_string()),
         }
     }
     #[test]
     fn transfer_0_01_sol() {
-        const RPC_URL: &str = "https://api.devnet.solana.com";
         // Import our keypair
         let keypair = read_keypair_file("dev-wallet.json").expect("Couldn't find wallet file");
         // Define our WBA public key
@@ -72,10 +73,62 @@ mod tests {
             "Success! Check out your TX here: https://explorer.solana.com/tx/{}/?cluster=devnet",
             signature
         );
-        // https://explorer.solana.com/tx/52MiJf5jBbqMb1iF6XvdhA36HCJb2rbeZgsey2ppiPfRE3Nrq7hkoa4hQczgJSVTcv6X3tgFNQUasMV2LJmA6RTd/?cluster=devnet
+        // https://explorer.solana.com/tx/vkPAv56cfbXAwD4HoWs5KAmRoK7qqdknCqbU8K62UiMQGk1kMSmsFPExvDV4pa4S8TJZGkx1JUZVfFC5MoxxJ4r/?cluster=devnet
     }
     #[test]
-    fn transfer_sol() {}
+    fn transfer_sol() {
+        // Import our keypair
+        let keypair = read_keypair_file("dev-wallet.json").expect("Couldn't find wallet file");
+
+        // Define our WBA public key (replace <your WBA public key> with your actual WBA public key)
+        let to_pubkey = Pubkey::from_str("HX1TPzh21wV1SFaENyu2YuAWzLfTL7ADjEtcNNdTCXiW").unwrap();
+
+        // Create a Solana devnet connection
+        let rpc_client = RpcClient::new(RPC_URL);
+
+        // Get recent blockhash
+        let recent_blockhash = rpc_client
+            .get_latest_blockhash()
+            .expect("Failed to get recent blockhash");
+
+        // Get balance of dev wallet
+        let balance = rpc_client
+            .get_balance(&keypair.pubkey())
+            .expect("Failed to get balance");
+
+        // Create a test transaction to calculate fees
+        let message = Message::new_with_blockhash(
+            &[transfer(&keypair.pubkey(), &to_pubkey, balance)],
+            Some(&keypair.pubkey()),
+            &recent_blockhash,
+        );
+
+        // Calculate exact fee rate to transfer entire SOL amount out of account minus fees
+        let fee = rpc_client
+            .get_fee_for_message(&message)
+            .expect("Failed to get fee calculator");
+
+        // Deduct fee from lamports amount and create a TX with correct balance
+        let transaction = Transaction::new_signed_with_payer(
+            &[transfer(&keypair.pubkey(), &to_pubkey, balance - fee)],
+            Some(&keypair.pubkey()),
+            &vec![&keypair],
+            recent_blockhash,
+        );
+
+        // Send the transaction
+        let signature = rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .expect("Failed to send transaction");
+
+        // Print the transaction link
+        println!(
+            "Success! Check out your TX here:
+            https://explorer.solana.com/tx/{}/?cluster=devnet",
+            signature
+        );
+        // https://explorer.solana.com/tx/25NrJSoVp76gWfm7fqatXXfgVECMHG2QYY2WG4JeFwFtjxRwCVmCN1NEY8zKRWAzMqGGruvdbxgDrdFrRCKug5Tw/?cluster=devnet
+    }
     #[test]
     fn base58_to_wallet() {
         println!("Input your private key as base58:");
