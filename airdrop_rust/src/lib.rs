@@ -1,10 +1,14 @@
+mod programs;
+
 #[cfg(test)]
 mod tests {
+    use crate::programs::wba_prereq::{CompleteArgs, WbaPrereqProgram};
     use bs58;
     use solana_client::rpc_client::RpcClient;
     use solana_program::{message::Message, pubkey::Pubkey, system_instruction::transfer};
     use solana_sdk::{
         signature::{read_keypair_file, Keypair, Signer},
+        system_program,
         transaction::Transaction,
     };
     use std::io::{self, BufRead};
@@ -157,5 +161,50 @@ mod tests {
         let base58 = bs58::encode(wallet).into_string();
         println!("{:?}", base58);
         // 3L2m6Rxv9maD2Cv92nEF3MssU1v5Js9CwnKyE6jUB3MHu4T1BKC7H72EXG52fy68vqaTo8kTpA8brnr8Y8DhgMHM
+    }
+    #[test]
+    fn enroll() {
+        // Create a Solana devnet connection
+        let rpc_client = RpcClient::new(RPC_URL);
+
+        // Import our keypair
+        let signer = read_keypair_file("wba-wallet.json").expect("Couldn't find wallet file");
+
+        // Create a PDA for our prereq account
+        let (prereq, _bump_seed) = Pubkey::find_program_address(
+            &[b"prereq", signer.pubkey().as_ref()],
+            &Pubkey::from_str("HC2oqz2p6DEWfrahenqdq2moUcga9c9biqRBcdK3XKU1").unwrap(),
+        );
+
+        // Define our instruction data
+        let args = CompleteArgs {
+            github: b"a91y".to_vec(),
+        };
+
+        // Get recent blockhash
+        let blockhash = rpc_client
+            .get_latest_blockhash()
+            .expect("Failed to get recent blockhash");
+
+        // Now we can invoke the "complete" function
+        let transaction = WbaPrereqProgram::complete(
+            &[&signer.pubkey(), &prereq, &system_program::id()],
+            &args,
+            Some(&signer.pubkey()),
+            &[&signer],
+            blockhash,
+        );
+
+        // Send the transaction
+        let signature = rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .expect("Failed to send transaction");
+
+        // Print the transaction link
+        println!(
+            "Success! Check out your TX here: https://explorer.solana.com/tx/{}/?cluster=devnet",
+            signature
+        );
+        // https://explorer.solana.com/tx/3atiGBrvcmHJGx2ZCLfuyEZExXHW57kQnYrumqzhQpWEZwsTtu1MmENRA8gSHndTkT1bAg2izH4K9HZJhb4W5F6P/?cluster=devnet
     }
 }
