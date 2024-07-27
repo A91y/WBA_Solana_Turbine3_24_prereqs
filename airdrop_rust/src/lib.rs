@@ -2,11 +2,13 @@
 mod tests {
     use bs58;
     use solana_client::rpc_client::RpcClient;
+    use solana_program::{pubkey::Pubkey, system_instruction::transfer};
     use solana_sdk::{
-        pubkey::Pubkey,
-        signature::{Keypair, Signer, read_keypair_file},
+        signature::{read_keypair_file, Keypair, Signer},
+        transaction::Transaction,
     };
     use std::io::{self, BufRead};
+    use std::str::FromStr;
     #[test]
     fn keygen() {
         // Create a new keypair
@@ -32,11 +34,45 @@ mod tests {
         match client.request_airdrop(&keypair.pubkey(), 2_000_000_000u64) {
             Ok(s) => {
                 println!("Success! Check out your TX here:");
-                println!("https://explorer.solana.com/tx/{}?cluster=devnet", s.to_string());
+                println!(
+                    "https://explorer.solana.com/tx/{}?cluster=devnet",
+                    s.to_string()
+                );
                 // https://explorer.solana.com/tx/iF8ugwXJzNEooHQtbqSvGE6B9rGt77DWfhkKWSraxUFtEc8BVsZe6av1pvHpdEbuAASB4HDwxm1BnxgU1PSdv66?cluster=devnet
-            },
+            }
             Err(e) => println!("Oops, something went wrong: {}", e.to_string()),
         }
+    }
+    #[test]
+    fn transfer_0_01_sol() {
+        const RPC_URL: &str = "https://api.devnet.solana.com";
+        // Import our keypair
+        let keypair = read_keypair_file("dev-wallet.json").expect("Couldn't find wallet file");
+        // Define our WBA public key
+        let to_pubkey = Pubkey::from_str("HX1TPzh21wV1SFaENyu2YuAWzLfTL7ADjEtcNNdTCXiW").unwrap();
+        // Create a Solana devnet connection
+        let rpc_client = RpcClient::new(RPC_URL);
+        // Get recent blockhash
+        let recent_blockhash = rpc_client
+            .get_latest_blockhash()
+            .expect("Failed to get recent blockhash");
+        // create and sign transaction
+        let transaction = Transaction::new_signed_with_payer(
+            &[transfer(&keypair.pubkey(), &to_pubkey, 1_000_000)],
+            Some(&keypair.pubkey()),
+            &vec![&keypair],
+            recent_blockhash,
+        );
+        // Send the transaction
+        let signature = rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .expect("Failed to send transaction");
+        // Print our transaction out
+        println!(
+            "Success! Check out your TX here: https://explorer.solana.com/tx/{}/?cluster=devnet",
+            signature
+        );
+        // https://explorer.solana.com/tx/52MiJf5jBbqMb1iF6XvdhA36HCJb2rbeZgsey2ppiPfRE3Nrq7hkoa4hQczgJSVTcv6X3tgFNQUasMV2LJmA6RTd/?cluster=devnet
     }
     #[test]
     fn transfer_sol() {}
